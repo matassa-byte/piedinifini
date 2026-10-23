@@ -1,0 +1,74 @@
+# Servizi comuni a sviluppo locale e server.
+# In locale si aggiunge da solo compose.override.yaml (porta 8080).
+# Sul server: docker compose -f compose.yaml -f compose.prod.yaml up -d
+
+services:
+  db:
+    image: mariadb:11.8.9
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  wordpress:
+    image: wordpress:7.1.3-php8.3-apache
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: &wp-env
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: ${DB_NAME}
+      WORDPRESS_DB_USER: ${DB_USER}
+      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
+      WORDPRESS_TABLE_PREFIX: pf_
+      WP_URL: ${WP_URL}
+      WP_ENVIRONMENT_TYPE: ${WP_ENVIRONMENT_TYPE}
+      PIEDINIFINI_MAGAZZINO_URL: ${PIEDINIFINI_MAGAZZINO_URL}
+      PIEDINIFINI_MAGAZZINO_TOKEN: ${PIEDINIFINI_MAGAZZINO_TOKEN}
+      WORDPRESS_CONFIG_EXTRA: |
+        define( 'WP_HOME', getenv_docker( 'WP_URL', 'http://localhost:8080' ) );
+        define( 'WP_SITEURL', WP_HOME );
+        define( 'WP_ENVIRONMENT_TYPE', getenv_docker( 'WP_ENVIRONMENT_TYPE', 'local' ) );
+        define( 'DISALLOW_FILE_EDIT', true );
+        define( 'PIEDINIFINI_MAGAZZINO_URL', getenv_docker( 'PIEDINIFINI_MAGAZZINO_URL', '' ) );
+        define( 'PIEDINIFINI_MAGAZZINO_TOKEN', getenv_docker( 'PIEDINIFINI_MAGAZZINO_TOKEN', '' ) );
+        if ( isset( $$_SERVER['HTTP_X_FORWARDED_PROTO'] ) && 'https' === $$_SERVER['HTTP_X_FORWARDED_PROTO'] ) {
+            $$_SERVER['HTTPS'] = 'on';
+        }
+    volumes: &wp-volumes
+      - wordpress:/var/www/html
+      - ./wp-content/themes/piedinifini:/var/www/html/wp-content/themes/piedinifini
+      - ./wp-content/plugins/piedinifini-magazzino:/var/www/html/wp-content/plugins/piedinifini-magazzino
+      - ./config/php.ini:/usr/local/etc/php/conf.d/piedinifini.ini:ro
+
+  # Strumento a riga di comando di WordPress, usato da scripts/setup.sh.
+  # Non resta acceso: parte solo con "docker compose run --rm wpcli ...".
+  wpcli:
+    image: wordpress:cli-2.12.0-php8.3
+    profiles: ["tools"]
+    user: "33:33"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *wp-env
+      WP_ADMIN_USER: ${WP_ADMIN_USER}
+      WP_ADMIN_PASSWORD: ${WP_ADMIN_PASSWORD}
+      WP_ADMIN_EMAIL: ${WP_ADMIN_EMAIL}
+      WOOCOMMERCE_VERSION: ${WOOCOMMERCE_VERSION}
+      WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
+    volumes: *wp-volumes
+
+volumes:
+  db:
+  wordpress:

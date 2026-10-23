@@ -1,0 +1,7 @@
+{$SITE_DOMAIN}, www.{$SITE_DOMAIN} {
+	@www host www.{$SITE_DOMAIN}
+	redir @www https://{$SITE_DOMAIN}{uri} permanent
+
+	encode zstd gzip
+	reverse_proxy wordpress:80
+}

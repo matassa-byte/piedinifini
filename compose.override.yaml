@@ -1,0 +1,5 @@
+# Solo per lo sviluppo locale: Docker Compose lo carica in automatico.
+services:
+  wordpress:
+    ports:
+      - "8080:80"
